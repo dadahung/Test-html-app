@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Death Valley Road Trip Planner</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind to use Inter font and custom colors -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'desert-sand': '#e5e5d1',
+                        'canyon-red': '#a83d3d',
+                        'sky-blue': '#4a758e',
+                        'salt-white': '#f7f7f7',
+                        'dark-rock': '#2c2e35',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Custom style for subtle background and scroll-snapping setup -->
+    <style>
+        body {
+            background-color: #e5e5d1; /* desert-sand */
+            font-family: 'Inter', sans-serif;
+        }
+        .itinerary-card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        #slider-viewport {
+            overflow: hidden;
+        }
+        #slider-track {
+            transition: transform 0.3s ease-in-out;
+        }
+        .day-card {
+            flex-shrink: 0;
+        }
+        .description-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out, padding 0.3s ease-in-out;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .description-content.expanded {
+            max-height: 800px; /* Accommodate longer content + buttons */
+            padding-top: 0.75rem; 
+            padding-bottom: 0.5rem; 
+        }
+        .activity-header {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .toggle-icon {
+            transition: transform 0.3s ease-in-out;
+        }
+        .toggle-icon.rotated {
+            transform: rotate(180deg);
+        }
+        /* Drag-and-Drop styles */
+        .itinerary-item {
+            cursor: grab;
+        }
+        .itinerary-item:active {
+            cursor: grabbing;
+        }
+        .dragging {
+            opacity: 0.4;
+            border: 2px dashed #a83d3d; /* canyon-red dashed border */
+        }
+        .drag-over {
+            border-bottom: 3px solid #4a758e; /* sky-blue line indicating drop location */
+            margin-bottom: -3px; /* Compensate for the border width so it doesn't shift other items */
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8">
+
+    <div id="app" class="max-w-4xl mx-auto bg-salt-white rounded-xl shadow-2xl overflow-hidden">
+
+        <!-- Header -->
+        <header class="bg-dark-rock text-salt-white p-6 text-center rounded-t-xl">
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">Death Valley Road Trip</h1>
+            <p class="text-canyon-red text-lg mt-1 font-semibold">3 Days of Desert Extremes</p>
+            <div id="user-info" class="text-xs text-salt-white/70 mt-2">Loading user info...</div>
+        </header>
+
+        <!-- Itinerary Controls and Slider Wrapper -->
+        <div id="itinerary-wrapper" class="p-4 sm:p-6 bg-sky-blue/10">
+            
+            <!-- Combined Navigation and Indicator -->
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center sm:space-x-4 mb-4">
+                
+                <button id="prev-button" class="w-full sm:w-auto px-4 py-2 bg-canyon-red text-salt-white font-semibold rounded-lg shadow-md transition-colors hover:bg-canyon-red/80 disabled:opacity-50 disabled:cursor-not-allowed order-1 sm:order-none">
+                    <span class="flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        <span class="hidden sm:inline">Previous Day</span>
+                        <span class="sm:hidden">Previous</span>
+                    </span>
+                </button>
+
+                <div class="flex-1 text-center order-2 sm:order-none my-3 sm:my-0">
+                    <p id="day-indicator" class="text-xl font-bold text-dark-rock/90">Loading Itinerary...</p>
+                    <p id="day-theme" class="text-sm text-dark-rock/70"></p>
+                </div>
+
+                <button id="next-button" class="w-full sm:w-auto px-4 py-2 bg-sky-blue text-salt-white font-semibold rounded-lg shadow-md transition-colors hover:bg-sky-blue/80 disabled:opacity-50 disabled:cursor-not-allowed order-3 sm:order-none">
+                    <span class="flex items-center justify-center">
+                        <span class="hidden sm:inline">Next Day</span>
+                        <span class="sm:hidden">Next</span>
+                        <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </span>
+                </button>
+            </div>
+            
+            <!-- Horizontal Slider Viewport -->
+            <div id="slider-viewport" class="rounded-lg border border-sky-blue/30 shadow-inner">
+                <div id="slider-track" class="flex w-full">
+                    <!-- Day Cards will be injected here by JavaScript -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Safety and Tips Section -->
+        <div class="p-4 sm:p-8 bg-desert-sand/50 border-t-2 border-canyon-red/30">
+            <h2 class="text-2xl font-bold text-dark-rock mb-4 border-b-2 border-canyon-red pb-2">⚠️ Essential Road Trip Tips</h2>
+            <ul class="space-y-3 text-dark-rock text-sm sm:text-base">
+                <li class="flex items-start">
+                    <span class="text-canyon-red mr-3 mt-1">&#11088;</span>
+                    <div>**Water is Life:** Carry an absolute minimum of **1 gallon of water per person, per day**. Dehydration is the biggest risk.</div>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-canyon-red mr-3 mt-1">&#11088;</span>
+                    <div>**Fuel Up:** Gas inside the park is very expensive. Fill your tank outside the park (e.g., Beatty, NV or Pahrump, NV) before entering.</div>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-canyon-red mr-3 mt-1">&#11088;</span>
+                    <div>**Time to Visit:** The ideal time is **October through April**. Summer temperatures often exceed $120^\circ\text{F}$ ($49^\circ\text{C}$), making outdoor activity extremely dangerous.</div>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-canyon-red mr-3 mt-1">&#11088;</span>
+                    <div>**Offline Maps:** Cell service is extremely sparse. **Download offline maps** for navigation (Google Maps or similar) before entering the park.</div>
+                </li>
+            </ul>
+        </div>
+
+        <footer class="p-4 bg-dark-rock text-salt-white text-center text-xs rounded-b-xl">
+            Created for a 3-day Death Valley adventure. Drive safely!
+        </footer>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // setLogLevel('Debug'); // Uncomment for debugging Firestore
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let db;
+        let auth;
+        let userId = 'loading';
+        let isAuthReady = false;
+
+        // --- MOCK DATA FOR INITIAL LOAD (RESTORED TO 5 STOPS PER DAY) ---
+        const initialItineraryData = [
+            {
+                day: "Day 1: Salt Flats, Golden Canyons, and Sunsets",
+                theme: "Iconic, world-famous sights closest to the Furnace Creek area.",
+                stops: [
+                    { location: "Furnace Creek Visitor Center", activity: "Start Here: Pay entrance fee, grab a map, and check current conditions.", description: "The Visitor Center is the official starting point for your trip. You can pay the park entrance fee here, get up-to-date information on road closures and extreme weather advisories, and browse exhibits detailing the park's unique natural and human history." },
+                    { location: "Zabriskie Point", activity: "Watch the sunrise or sunset over the rolling, eroded badlands of golden-brown mudstone.", description: "One of the most famous views in the park, offering panoramic views of the surreal, wavy landscape of Manly Beacon and the surrounding badlands, formed from the sediments of an ancient lake." },
+                    { location: "Badwater Basin", activity: "Walk onto the salt flats at $-282 \text{ feet}$ below sea level—the lowest point in North America.", description: "Experience the vast expanse of the salt flats, created by centuries of evaporation. A short walk from the parking lot brings you to the distinctive polygonal salt crusts. Look up on the cliff face to spot the sea level sign!" },
+                    { location: "Devil's Golf Course", activity: "Quick photo op of the incredibly rugged, spiky salt formations.", description: "This surreal area is covered in jagged, crystalline salt deposits. Be extremely careful when walking, as the terrain is sharp and uneven. The name comes from the idea that 'only the Devil could play golf on such a surface.'" },
+                    { location: "Artist's Drive / Artist's Palette", activity: "Drive the scenic $9 \text{-mile}$ loop road, stopping to view the colorful volcanic and mineral deposits at Artist's Palette.", description: "The colorful hillsides are caused by the oxidation of metals (iron oxides for red/pink, mica for green, manganese for purple) in the volcanic rock. The best time to visit is late afternoon when the sun highlights the colors." }
+                ]
+            },
+            {
+                day: "Day 2: High Views, History, and Remote Exploration",
+                theme: "Exploring the area's borax history and panoramic viewpoints, including a remote, high-clearance option.",
+                stops: [
+                    { location: "Dante's View", activity: "Start Here: Drive to this $5,475 \text{-foot}$ overlook for a spectacular sunrise view over Badwater Basin.", description: "The panoramic view from Dante's View spans almost the entire southern part of the park. From this vantage point, you can clearly see Badwater Basin (the lowest point) and Telescope Peak (the highest point) in the distance, a massive vertical difference." },
+                    { location: "Titus Canyon", activity: "Drive the $27 \text{-mile}$, one-way dirt road through the colorful mountains and into the narrowest slot canyon in the park. (High-clearance vehicle recommended).", description: "An exciting scenic drive through a canyon that holds a ghost town (Leadfield) and petroglyphs, culminating in a dramatic, tight slot canyon section near the exit. Check road conditions before attempting." },
+                    { location: "Harmony Borax Works", activity: "Explore the ruins and interpretive trail of the historical $19 \text{th}$-century borax plant.", description: "This site tells the story of the $1880$s borax rush. You can walk the short loop trail among the ruins of the refinery and the famous twenty-mule team wagons used to haul the product out of the valley." },
+                    { location: "Racetrack Playa ($4 \text{x}4$ required)", activity: "View the mysterious moving rocks that leave tracks across the dry lakebed. (Requires high-clearance $4 \text{x}4$ vehicle).", description: "This remote dry lakebed is famous for its 'sailing stones'—rocks that move across the surface, leaving long trails. The drive is very remote and rough; be prepared with extra fuel and supplies." },
+                    { location: "Stargazing (Mesquite Dunes)", activity: "Find a remote pull-off (like Mesquite Sand Dunes lot) to view the Milky Way—Death Valley is an International Dark Sky Park.", description: "Death Valley has some of the darkest night skies in the US. Take advantage of the lack of light pollution to view stars, constellations, and the Milky Way core in stunning detail. Bring a red flashlight to preserve your night vision." },
+                ]
+            },
+            {
+                day: "Day 3: Craters, Dunes, and Western Landscapes",
+                theme: "Visiting the vast sand dunes, unique volcanic landscapes, and refueling near the park center.",
+                stops: [
+                    { location: "Mesquite Flat Sand Dunes", activity: "Start Here: Get up early to see the soft light hit the vast dunes. Walk out onto the sand to find pristine, wind-rippled areas.", description: "These are the most accessible and famous dunes in the park. Visit at sunrise for the best light and to see the longest shadows; it's also much cooler. Look for animal tracks left by nocturnal creatures." },
+                    { location: "Mosaic Canyon", activity: "Hike through this beautiful polished marble slot canyon that narrows and widens. A park highlight! ($4 \text{ miles}$ R/T).", description: "The lower part of the canyon features smooth, water-polished walls of Noonday Dolomite, giving it a marble-like appearance. Further up, the canyon narrows, requiring some light scrambling—a truly unique geological experience." },
+                    { location: "The Oasis at Death Valley (Lunch/Resupply)", activity: "Stop for a midday meal, resupply essentials, or a short break in the park's main resort area (Furnace Creek Ranch/Inn).", description: "A welcome oasis in the desert, offering restaurants, restrooms, and a general store. Use this time to cool off and replenish water and snacks before continuing your exploration." },
+                    { location: "Ubehebe Crater", activity: "Drive north to see this massive half-mile-wide, $600 \text{-foot}$-deep volcanic crater. Walk around the rim for great views.", description: "Ubehebe is a large maar (explosion) crater formed by steam and gas rising from magma hitting groundwater. You can hike the $1.5 \text{-mile}$ trail around the rim for incredible views, but be prepared for high winds and steep slopes." },
+                    { location: "Father Crowley Viewpoint", activity: "Stop at this overlook for stunning views of Panamint Valley and the unique volcanic features of the area as you exit the park.", description: "Located on the western edge of the park, this viewpoint provides excellent perspectives on the vast geological forces that shaped the region and is a perfect final stop before heading west." }
+                ]
+            }
+        ];
+
+        // Global state for itinerary
+        let itineraryData = initialItineraryData;
+
+        // --- DRAG-AND-DROP GLOBAL STATE ---
+        let draggedStopIndices = { dayIndex: -1, stopIndex: -1 };
+
+
+        // --- DOM ELEMENT SELECTION ---
+
+        const sliderTrack = document.getElementById('slider-track');
+        const itineraryWrapper = document.getElementById('itinerary-wrapper');
+        const prevButton = document.getElementById('prev-button');
+        const nextButton = document.getElementById('next-button');
+        const dayIndicator = document.getElementById('day-indicator');
+        const dayTheme = document.getElementById('day-theme');
+        const userInfo = document.getElementById('user-info');
+        
+        let currentDayIndex = 0;
+        let startPos = 0;
+        let isDragging = false;
+        const swipeThreshold = 50; 
+
+        // --- FIREBASE & DATA MANAGEMENT ---
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setPersistence(auth, browserLocalPersistence);
+
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(e => {
+                    console.error("Custom token sign-in failed, falling back to anonymous.", e);
+                    signInAnonymously(auth);
+                });
+            } else {
+                signInAnonymously(auth);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    userInfo.textContent = `User ID: ${userId}`;
+                    startDataListener();
+                } else {
+                    console.log("Not authenticated.");
+                    userInfo.textContent = `User ID: Anonymous`;
+                    // Use initial mock data if sign-in fails or user signs out
+                    renderItineraryCards();
+                    updateUI();
+                }
+            });
+        } else {
+            console.error("Firebase config is missing. Using local mock data.");
+            renderItineraryCards();
+            updateUI();
+        }
+
+        function getItineraryDocRef() {
+            if (!db || !userId) return null;
+            // Private data path: /artifacts/{appId}/users/{userId}/itinerary/plan
+            return doc(db, `artifacts/${appId}/users/${userId}/itinerary/plan`);
+        }
+
+        function startDataListener() {
+            const docRef = getItineraryDocRef();
+            if (!docRef) return;
+
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists() && docSnap.data().data) {
+                    // Data loaded from Firestore
+                    itineraryData = docSnap.data().data;
+                    console.log("Itinerary loaded from Firestore.");
+                } else {
+                    // Document doesn't exist, initialize with mock data
+                    saveItinerary(initialItineraryData);
+                    itineraryData = initialItineraryData;
+                    console.log("Itinerary initialized with mock data.");
+                }
+                renderItineraryCards();
+                updateUI();
+            }, (error) => {
+                console.error("Error listening to itinerary changes:", error);
+            });
+        }
+
+        async function saveItinerary(data) {
+            const docRef = getItineraryDocRef();
+            if (!docRef) return console.error("Cannot save: DB or User ID not ready.");
+            try {
+                // To ensure Firebase detects changes, we create a new array/object structure
+                const dataToSave = data.map(day => ({ 
+                    ...day, 
+                    stops: day.stops.map(stop => ({ ...stop })) 
+                }));
+                await setDoc(docRef, { data: dataToSave });
+                console.log("Itinerary saved successfully.");
+            } catch (e) {
+                console.error("Error writing document: ", e);
+            }
+        }
+
+
+        // --- UI & INTERACTION LOGIC ---
+
+        function toggleDescription(event) {
+            const item = event.currentTarget.closest('.itinerary-item');
+            // Ensure we are operating on the active content wrapper
+            const wrapper = item.querySelector('.stop-content-wrapper');
+            const descriptionContent = wrapper.querySelector('.description-content');
+            const toggleIcon = wrapper.querySelector('.toggle-icon');
+
+            const isExpanding = !descriptionContent.classList.contains('expanded');
+
+            // Collapse all other expanded items first (across all days/cards)
+            document.querySelectorAll('.description-content.expanded').forEach(content => {
+                content.classList.remove('expanded');
+            });
+            document.querySelectorAll('.toggle-icon.rotated').forEach(icon => {
+                icon.classList.remove('rotated');
+            });
+
+            if (isExpanding) {
+                descriptionContent.classList.add('expanded');
+                toggleIcon.classList.add('rotated');
+            }
+        }
+        
+        function startDriving(event) {
+            const destination = event.currentTarget.getAttribute('data-location');
+            const drivingUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination + ", Death Valley National Park")}`;
+            window.open(drivingUrl, '_blank');
+        }
+
+        
+        // --- FUNCTIONS FOR REMOVE/MOVE ---
+
+        function removeLocation(event) {
+            const confirmation = prompt("Are you sure you want to remove this location? Type 'YES' to confirm.");
+            if (confirmation !== 'YES') {
+                return;
+            }
+
+            const dayIndex = parseInt(event.currentTarget.getAttribute('data-day-index'));
+            const stopIndex = parseInt(event.currentTarget.getAttribute('data-stop-index'));
+
+            if (dayIndex >= 0 && stopIndex >= 0 && itineraryData[dayIndex] && itineraryData[dayIndex].stops) {
+                itineraryData[dayIndex].stops.splice(stopIndex, 1);
+                saveItinerary(itineraryData);
+            }
+        }
+
+        /**
+         * Hides the move options panel and resets the visual state of the item.
+         * @param {HTMLElement} item - The itinerary item element.
+         */
+        function hideMoveOptions(item) {
+            const wrapper = item.querySelector('.stop-content-wrapper');
+            const movePanel = item.querySelector('.move-options-panel');
+            
+            // Remove greying effect from the content wrapper
+            wrapper.classList.remove('opacity-40', 'pointer-events-none');
+            
+            // Hide move panel
+            movePanel.classList.add('hidden');
+        }
+
+        /**
+         * Shows the day selection options and applies the greying effect to content.
+         * @param {Event} event - The click event.
+         */
+        function showMoveOptions(event) {
+            const currentButton = event.currentTarget;
+            const item = currentButton.closest('.itinerary-item');
+            const dayIndex = parseInt(currentButton.getAttribute('data-day-index'));
+
+            // The content wrapper that needs to be greyed out
+            const wrapper = item.querySelector('.stop-content-wrapper');
+            
+            // 1. Visually grey out the location content and disable interaction
+            wrapper.classList.add('opacity-40', 'pointer-events-none');
+
+            // 2. Show the move panel (which is a sibling and therefore not dimmed)
+            const movePanel = item.querySelector('.move-options-panel');
+            const dayButtonsContainer = item.querySelector('.move-day-buttons');
+            movePanel.classList.remove('hidden');
+            dayButtonsContainer.innerHTML = ''; // Clear previous buttons
+
+            const currentDayCount = itineraryData.length;
+            
+            // 3. Populate day selection buttons
+            for (let i = 0; i < currentDayCount; i++) {
+                // Skip the current day
+                if (i !== dayIndex) {
+                    const btn = document.createElement('button');
+                    btn.className = 'move-day-select-btn px-3 py-1 bg-sky-blue text-salt-white font-medium rounded-md shadow-sm transition-colors hover:bg-sky-blue/80 text-xs';
+                    btn.textContent = `Day ${i + 1}`;
+                    btn.setAttribute('data-target-day-index', i);
+                    btn.setAttribute('data-from-day-index', dayIndex);
+                    btn.setAttribute('data-stop-index', currentButton.getAttribute('data-stop-index'));
+                    dayButtonsContainer.appendChild(btn);
+                }
+            }
+
+            // If there's only one day, cancel the move immediately
+            if (currentDayCount <= 1) {
+                hideMoveOptions(item);
+                console.log("Cannot move: This is the only day in the itinerary.");
+            }
+        }
+
+        /**
+         * Handles the selection of a target day and executes the move operation.
+         * @param {HTMLElement} buttonElement - The actual day selection button element that was clicked.
+         */
+        function handleMoveSelection(buttonElement) {
+            // Read data attributes from the specific buttonElement
+            const fromDayIndex = parseInt(buttonElement.getAttribute('data-from-day-index'));
+            const toDayIndex = parseInt(buttonElement.getAttribute('data-target-day-index'));
+            const stopIndex = parseInt(buttonElement.getAttribute('data-stop-index'));
+            const item = buttonElement.closest('.itinerary-item');
+
+            // Robust check for valid indices
+            if (isNaN(fromDayIndex) || isNaN(stopIndex) || fromDayIndex < 0 || stopIndex < 0 || !itineraryData[fromDayIndex] || !itineraryData[fromDayIndex].stops) {
+                console.error("Invalid move source indices. Index values:", fromDayIndex, stopIndex);
+                hideMoveOptions(item);
+                return;
+            }
+            
+            // 1. Perform the move
+            const stopToMove = itineraryData[fromDayIndex].stops.splice(stopIndex, 1)[0];
+            itineraryData[toDayIndex].stops.push(stopToMove);
+
+            // 2. Save and trigger UI update
+            saveItinerary(itineraryData);
+            
+            // 3. Switch to the target day view immediately
+            currentDayIndex = toDayIndex;
+            updateUI(); 
+        }
+
+        /**
+         * Handles the click on the Cancel button to exit the move state.
+         * @param {Event} event - The click event.
+         */
+        function cancelMove(event) {
+            const item = event.currentTarget.closest('.itinerary-item');
+            hideMoveOptions(item);
+        }
+
+        // --- DRAG-AND-DROP HANDLERS ---
+
+        function handleDragStart(e) {
+            const item = e.currentTarget;
+            const dayIndex = parseInt(item.getAttribute('data-day-index'));
+            const stopIndex = parseInt(item.getAttribute('data-stop-index'));
+
+            draggedStopIndices = { dayIndex, stopIndex };
+            
+            e.dataTransfer.setData('text/plain', 'reorder-stop'); // Required for Firefox
+            
+            // Visual feedback
+            setTimeout(() => item.classList.add('dragging'), 0);
+        }
+        
+        /**
+         * Cleans up the visual state after any drag operation, successful or cancelled.
+         */
+        function handleDragEnd(e) {
+            // 1. Remove the 'dragging' class from the source element
+            e.currentTarget.classList.remove('dragging');
+
+            // 2. Clean up 'drag-over' class from any lingering target elements
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            
+            // 3. Reset the global drag state
+            draggedStopIndices = { dayIndex: -1, stopIndex: -1 };
+        }
+
+
+        function handleDragOver(e) {
+            e.preventDefault(); // Essential to allow drop
+
+            const targetItem = e.currentTarget;
+            
+            // Prevent dragging over the item being dragged or non-itinerary elements
+            if (targetItem.classList.contains('dragging')) return;
+
+            // Apply visual feedback for drop target
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            targetItem.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            
+            const targetItem = e.currentTarget;
+            const targetDayIndex = parseInt(targetItem.getAttribute('data-day-index'));
+            const targetStopIndex = parseInt(targetItem.getAttribute('data-stop-index'));
+
+            // Clean up drag-over class from all elements
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            
+            const { dayIndex: fromDayIndex, stopIndex: fromStopIndex } = draggedStopIndices;
+
+            // 1. Check if the drag is valid (must be within the same day)
+            if (fromDayIndex !== targetDayIndex) {
+                console.error("Drag target is not in the same day. Operation cancelled.");
+                // Rely on handleDragEnd to clean up dragging class
+                return;
+            }
+            // 2. Check if the source and target are the same
+            if (fromStopIndex === targetStopIndex) {
+                // Rely on handleDragEnd to clean up dragging class
+                return;
+            }
+            
+            // 3. Execute reorder and save
+            reorderStops(fromDayIndex, fromStopIndex, targetStopIndex);
+        }
+
+        /**
+         * Reorders stops within a specific day and saves the new itinerary.
+         * @param {number} dayIndex - The index of the day (e.g., 0 for Day 1).
+         * @param {number} fromIndex - The current index of the stop to move.
+         * @param {number} toIndex - The new index where the stop should be placed.
+         */
+        function reorderStops(dayIndex, fromIndex, toIndex) {
+            if (!itineraryData[dayIndex]) return;
+
+            // 1. Extract the item
+            const [stopToMove] = itineraryData[dayIndex].stops.splice(fromIndex, 1);
+            
+            // 2. Insert the item at the new position
+            itineraryData[dayIndex].stops.splice(toIndex, 0, stopToMove);
+
+            // 3. Save the updated structure
+            saveItinerary(itineraryData);
+        }
+
+
+        function renderItineraryCards() {
+            sliderTrack.innerHTML = '';
+            
+            itineraryData.forEach((dayPlan, index) => {
+                const card = document.createElement('div');
+                card.className = 'day-card min-w-full p-4 sm:p-6 bg-salt-white itinerary-card rounded-xl shadow-lg flex flex-col justify-between';
+                card.style.width = '100%';
+                
+                const ul = document.createElement('ul');
+                ul.className = 'space-y-4 mb-6'; 
+
+                dayPlan.stops.forEach((stop, stopIndex) => {
+                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stop.location + ", Death Valley National Park")}`;
+                    
+                    const mapLink = `
+                        <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center ml-2 text-canyon-red hover:text-dark-rock transition-colors" title="View on map">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+                                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+                                <circle cx="12" cy="10" r="3"/>
+                            </svg>
+                        </a>
+                    `;
+
+                    const li = document.createElement('li');
+                    li.className = 'itinerary-item p-3 rounded-lg border-l-4 border-canyon-red bg-salt-white shadow-sm transition-all duration-300 relative'; // Added relative for panel positioning
+                    
+                    // --- DRAG-AND-DROP ATTRIBUTES ---
+                    li.setAttribute('draggable', 'true');
+                    li.setAttribute('data-day-index', index);
+                    li.setAttribute('data-stop-index', stopIndex);
+                    // --- END DRAG-AND-DROP ATTRIBUTES ---
+
+                    li.innerHTML = `
+                        <!-- NEW: Wrapper for ALL content that should be dimmed and non-interactive during 'Move' -->
+                        <div class="stop-content-wrapper transition-opacity duration-300"> 
+                            <!-- Clickable Header Section (Time property removed) -->
+                            <div class="activity-header">
+                                <div>
+                                    <h4 class="text-lg font-semibold text-dark-rock inline-flex items-center">
+                                        ${stopIndex + 1}. ${stop.location}
+                                        ${mapLink}
+                                    </h4>
+                                    <p class="text-sm text-dark-rock/80 mt-1">${stop.activity}</p>
+                                </div>
+                                
+                                <!-- Toggle Icon (Arrow) -->
+                                <div class="p-2 ml-4 rounded-full hover:bg-desert-sand/50 transition-colors">
+                                    <svg class="w-5 h-5 text-canyon-red toggle-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <!-- Collapsible Description Content -->
+                            <div class="description-content">
+                                <p class="text-sm text-dark-rock/90 border-t border-desert-sand/80 pt-3">${stop.description}</p>
+                                
+                                <!-- Start Driving Button -->
+                                <button data-location="${stop.location}" class="start-driving-btn mt-3 w-full flex items-center justify-center px-4 py-2 bg-sky-blue text-salt-white font-semibold rounded-lg shadow-md transition-colors hover:bg-sky-blue/80">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.8A2 2 0 0110.586 20.8L6.343 16.657A8 8 0 1117.657 16.657z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    Start Driving Directions
+                                </button>
+
+                                <!-- Action Buttons Container (Remove and Move) -->
+                                <div class="flex space-x-2 mt-3" data-action-container>
+                                    <!-- Remove Button -->
+                                    <button data-day-index="${index}" data-stop-index="${stopIndex}" class="remove-location-btn w-full flex items-center justify-center px-4 py-2 bg-canyon-red/10 text-canyon-red font-semibold rounded-lg shadow-sm transition-colors hover:bg-canyon-red/20 text-sm">
+                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        Remove
+                                    </button>
+
+                                    <!-- Move Button -->
+                                    <button data-day-index="${index}" data-stop-index="${stopIndex}" class="move-location-btn w-full flex items-center justify-center px-4 py-2 bg-sky-blue/10 text-sky-blue font-semibold rounded-lg shadow-sm transition-colors hover:bg-sky-blue/20 text-sm">
+                                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                        Move to Day...
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Move Day Selection UI (Sibling to the content wrapper, NOT DIMMED) -->
+                        <div class="move-options-panel hidden absolute inset-0 z-10 p-3 flex flex-col justify-center items-center bg-salt-white/95 rounded-lg border-2 border-sky-blue/50">
+                            <p class="text-base font-bold mb-3 text-dark-rock">Move location to:</p>
+                            <div class="move-day-buttons flex flex-wrap justify-center gap-2">
+                                <!-- Day buttons injected here by JS in showMoveOptions -->
+                            </div>
+                            <button class="cancel-move-btn mt-3 w-3/4 max-w-xs px-3 py-1 bg-canyon-red/10 text-canyon-red rounded-lg text-sm font-semibold hover:bg-canyon-red/20">Cancel Move</button>
+                        </div>
+                    `;
+                    
+                    // --- ATTACH EVENT LISTENERS ---
+                    li.querySelector('.activity-header').addEventListener('click', toggleDescription);
+                    li.querySelector('.start-driving-btn').addEventListener('click', startDriving);
+                    
+                    li.querySelector('.remove-location-btn').addEventListener('click', removeLocation);
+                    li.querySelector('.move-location-btn').addEventListener('click', showMoveOptions); 
+                    li.querySelector('.cancel-move-btn').addEventListener('click', cancelMove);
+                    
+                    li.querySelector('.move-day-buttons').addEventListener('click', (e) => {
+                        const targetButton = e.target.closest('.move-day-select-btn');
+                        if (targetButton) {
+                            handleMoveSelection(targetButton);
+                        }
+                    });
+
+                    // --- DRAG-AND-DROP LISTENERS (Attached to the LI) ---
+                    li.addEventListener('dragstart', handleDragStart);
+                    li.addEventListener('dragover', handleDragOver);
+                    li.addEventListener('dragleave', handleDragLeave);
+                    li.addEventListener('drop', handleDrop);
+                    li.addEventListener('dragend', handleDragEnd); // <-- Cleanup for cancelled drags
+                    // --- END DRAG-AND-DROP LISTENERS ---
+
+                    ul.appendChild(li);
+                });
+
+                card.appendChild(ul);
+
+                sliderTrack.appendChild(card);
+            });
+            updateUI(); 
+        }
+
+        // --- NAVIGATION AND UI UPDATES (Remaining functions from previous version) ---
+
+        function updateUI() {
+            if (itineraryData.length === 0) return;
+
+            const offset = -currentDayIndex * 100;
+            sliderTrack.style.transform = `translateX(${offset}%)`;
+
+            dayIndicator.textContent = `${itineraryData[currentDayIndex].day} (Day ${currentDayIndex + 1} of ${itineraryData.length})`;
+            dayTheme.textContent = itineraryData[currentDayIndex].theme;
+            
+            // No weather update needed!
+
+            prevButton.disabled = currentDayIndex === 0;
+            nextButton.disabled = currentDayIndex === itineraryData.length - 1;
+        }
+
+        function nextDay() {
+            if (currentDayIndex < itineraryData.length - 1) {
+                currentDayIndex++;
+                updateUI();
+            }
+        }
+
+        function prevDay() {
+            if (currentDayIndex > 0) {
+                currentDayIndex--;
+                updateUI();
+            }
+        }
+
+        function getXPos(e) {
+            return e.touches ? e.touches[0].screenX : e.screenX;
+        }
+
+        function handleStart(e) {
+            // Check if the target is interactive (like a button or the activity header)
+            if (e.target.closest('button, a, input, form, .activity-header') || e.target.closest('.itinerary-item')) {
+                // If it's a draggable item, we let the dragstart event handle it
+                if (e.target.closest('.itinerary-item') && e.type === 'touchstart') {
+                    // Prevent swipe navigation when touching a draggable item
+                    isDragging = false; 
+                    return;
+                }
+                
+                isDragging = false;
+                return;
+            }
+            isDragging = true;
+            startPos = getXPos(e);
+        }
+
+        function handleEnd(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            const endEvent = e.changedTouches ? e.changedTouches[0] : e;
+            if (!endEvent) return;
+
+            const endPos = getXPos(endEvent);
+            const swipeDistance = startPos - endPos;
+
+            if (Math.abs(swipeDistance) > swipeThreshold) {
+                if (swipeDistance > 0) {
+                    nextDay();
+                } else {
+                    prevDay();
+                }
+            } else {
+                updateUI(); 
+            }
+        }
+
+        itineraryWrapper.addEventListener('touchstart', handleStart);
+        itineraryWrapper.addEventListener('touchend', handleEnd);
+        itineraryWrapper.addEventListener('touchcancel', handleEnd); 
+        itineraryWrapper.addEventListener('mousedown', handleStart);
+        itineraryWrapper.addEventListener('mouseup', handleEnd);
+
+        prevButton.addEventListener('click', prevDay);
+        nextButton.addEventListener('click', nextDay);
+
+    </script>
+</body>
+</html>
